@@ -1,36 +1,30 @@
 package com.texter.demo;
 
-import com.resend.Resend;
-import com.resend.services.emails.model.CreateEmailOptions;
-import com.resend.services.emails.model.CreateEmailResponse;
-import com.resend.core.exception.ResendException;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 @Service
 public class EmailService {
 
-    private final Resend resend;
+    private final JavaMailSender mailSender;
 
-    @Value("${resend.from.email:onboarding@resend.dev}")
-    private String fromEmail;
-
-    public EmailService(@Value("${resend.api.key}") String apiKey) {
-        this.resend = new Resend(apiKey);
+    public EmailService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
     }
 
     public void sendVerificationCode(String to, String code) {
-        CreateEmailOptions params = CreateEmailOptions.builder()
-                .from(fromEmail)
-                .to(to)
-                .subject("Код підтвердження")
-                .html(buildVerificationHtml(code))
-                .build();
-
         try {
-            CreateEmailResponse response = resend.emails().send(params);
-            // за бажанням: log.info("Email sent, id={}", response.getId());
-        } catch (ResendException e) {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setTo(to);
+            helper.setSubject("Код підтвердження");
+            helper.setText(buildVerificationHtml(code), true);
+            mailSender.send(message);
+        } catch (MessagingException e) {
             throw new RuntimeException("Не вдалося надіслати лист із кодом підтвердження", e);
         }
     }
