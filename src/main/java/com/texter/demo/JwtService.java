@@ -2,15 +2,28 @@ package com.texter.demo;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PostConstruct;
 import java.security.Key;
+import java.util.Base64;
 import java.util.Date;
 
 @Service
 public class JwtService {
 
-    private final Key key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private final long EXPIRATION = 1000L * 60 * 60 * 24 * 30; // 30 днів
+    @Value("${jwt.secret}")
+    private String secret;
+
+    private Key key;
+
+    private static final long EXPIRATION = 1000L * 60 * 60 * 24 * 30; // 30 днів
+
+    @PostConstruct
+    public void init() {
+        this.key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secret));
+    }
 
     public String generateToken(String username) {
         return Jwts.builder()

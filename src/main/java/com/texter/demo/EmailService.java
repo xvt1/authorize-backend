@@ -1,42 +1,45 @@
 package com.texter.demo;
 
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import com.resend.Resend;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private final Resend resend;
 
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
+    @Value("${resend.from-email}")
+    private String fromEmail;
+
+    public EmailService(Resend resend) {
+        this.resend = resend;
     }
 
     public void sendVerificationCode(String to, String code) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setTo(to);
-            helper.setSubject("Код підтвердження");
-            helper.setText(buildVerificationHtml(code), true);
-            mailSender.send(message);
-        } catch (MessagingException e) {
-            throw new RuntimeException("Не вдалося надіслати лист із кодом підтвердження", e);
-        }
-    }
-
-    private String buildVerificationHtml(String code) {
-        return """
-                <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-                    <h2>Підтвердження реєстрації</h2>
-                    <p>Ваш код підтвердження:</p>
-                    <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px;">%s</p>
-                    <p>Код дійсний протягом 5 хвилин. Якщо ви не реєструвалися — проігноруйте цей лист.</p>
+        String html = """
+                <div style="font-family: sans-serif;">
+                    <h2>Код подтверждения</h2>
+                    <p>Ваш код подтверждения:</p>
+                    <h1 style="letter-spacing: 4px;">%s</h1>
+                    <p>Если вы не запрашивали код — просто проигнорируйте это письмо.</p>
                 </div>
                 """.formatted(code);
+
+        CreateEmailOptions params = CreateEmailOptions.builder()
+                .from(fromEmail)
+                .to(to)
+                .subject("Ваш код подтверждения")
+                .html(html)
+                .build();
+
+        try {
+            CreateEmailResponse response = resend.emails().send(params);
+            // response.getId() — можно залогировать id письма для отладки
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось отправить письмо через Resend", e);
+        }
     }
 }
