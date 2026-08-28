@@ -1,10 +1,13 @@
 package com.texter.demo;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
 import java.time.Instant;
 
 @Entity
 @Table(name = "users")
+@DynamicUpdate // Hibernate буде включати в UPDATE тільки реально змінені колонки,
+// а не всі (password/email/role тощо) при кожному save()
 public class User {
 
     private static final long ONLINE_THRESHOLD_MINUTES = 5;

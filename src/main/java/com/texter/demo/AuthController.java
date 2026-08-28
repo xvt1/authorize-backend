@@ -13,6 +13,11 @@ import java.util.Random;
 @CrossOrigin(origins = "*")
 public class AuthController {
 
+    // Не пишемо last_seen_at в базу частіше, ніж раз на цей інтервал —
+    // саме це прибирає "select...update...select...update" шторм
+    // при частих запитах /auth/me та /auth/heartbeat.
+    private static final long LAST_SEEN_UPDATE_THRESHOLD_SECONDS = 20;
+
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final Map<String, String> verificationCodes = new HashMap<>();
@@ -26,6 +31,18 @@ public class AuthController {
         this.jwtService = jwtService;
         this.telegramNotificationService = telegramNotificationService;
         this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * Оновлює last_seen_at прямим UPDATE-ом (без перезапису всього рядка)
+     * і тільки якщо минуло достатньо часу з попереднього оновлення.
+     */
+    private void touchLastSeenIfNeeded(User user) {
+        Instant now = Instant.now();
+        Instant last = user.getLastSeenAt();
+        if (last == null || last.isBefore(now.minusSeconds(LAST_SEEN_UPDATE_THRESHOLD_SECONDS))) {
+            userRepository.touchLastSeenAt(user.getUsername(), now);
+        }
     }
 
     @PostMapping("/auth/register")
@@ -78,6 +95,11 @@ public class AuthController {
         newUser.setPassword(verificationCodes.get(req.getEmail() + "_password"));
         newUser.setNickname(verificationCodes.get(req.getEmail() + "_nickname"));
         // role = PENDING — користувач НЕ може зайти, поки адмін не прийме
+
+        // Видаємо токен одразу: користувач «увійшов», на сайті побачить
+        // «Очікуйте підтвердження» поки адмін не прийме.
+        // last_seen_at ставимо ДО save, щоб не робити другий UPDATE одразу після першого.
+        newUser.setLastSeenAt(Instant.now());
         userRepository.save(newUser);
 
         verificationCodes.remove(req.getEmail());
@@ -87,10 +109,6 @@ public class AuthController {
 
         telegramNotificationService.notifyAdminAboutNewUser(newUser);
 
-        // Видаємо токен одразу: користувач «увійшов», на сайті побачить
-        // «Очікуйте підтвердження» поки адмін не прийме
-        newUser.setLastSeenAt(Instant.now());
-        userRepository.save(newUser);
         String token = jwtService.generateToken(newUser.getUsername());
         return ResponseEntity.ok(token);
     }
@@ -128,8 +146,7 @@ public class AuthController {
 
         // PENDING теж отримує токен: на сайті покажеться «очікуйте»,
         // поки адмін не прийме (перевірка через /auth/me)
-        user.setLastSeenAt(Instant.now());
-        userRepository.save(user);
+        touchLastSeenIfNeeded(user);
 
         String token = jwtService.generateToken(user.getUsername());
         return ResponseEntity.ok(token);
@@ -150,8 +167,7 @@ public class AuthController {
                     if (user.getRole() == Role.PENDING) {
                         return ResponseEntity.status(403).body(Map.of("status", "pending"));
                     }
-                    user.setLastSeenAt(Instant.now());
-                    userRepository.save(user);
+                    touchLastSeenIfNeeded(user);
                     return ResponseEntity.ok(Map.of("status", "ok"));
                 })
                 .orElse(ResponseEntity.status(404).body(Map.of("status", "not_found")));
@@ -185,8 +201,7 @@ public class AuthController {
                         ));
                     }
 
-                    user.setLastSeenAt(Instant.now());
-                    userRepository.save(user);
+                    touchLastSeenIfNeeded(user);
 
                     return ResponseEntity.ok(Map.of(
                             "status", "ok",
