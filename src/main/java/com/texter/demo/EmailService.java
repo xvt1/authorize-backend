@@ -1,45 +1,45 @@
 package com.texter.demo;
 
-import com.resend.Resend;
-import com.resend.services.emails.model.CreateEmailOptions;
-import com.resend.services.emails.model.CreateEmailResponse;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailService {
 
-    private final Resend resend;
+    private final JavaMailSender mailSender;
 
-    @Value("${resend.from-email}")
+    @Value("${spring.mail.username}")
     private String fromEmail;
 
-    public EmailService(Resend resend) {
-        this.resend = resend;
+    public EmailService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
     }
 
     public void sendVerificationCode(String to, String code) {
         String html = """
                 <div style="font-family: sans-serif;">
-                    <h2>Код подтверждения</h2>
-                    <p>Ваш код подтверждения:</p>
+                    <h2>Код підтвердження</h2>
+                    <p>Ваш код підтвердження:</p>
                     <h1 style="letter-spacing: 4px;">%s</h1>
-                    <p>Если вы не запрашивали код — просто проигнорируйте это письмо.</p>
+                    <p>Якщо ви не запитували код — просто проігноруйте цей лист.</p>
                 </div>
                 """.formatted(code);
 
-        CreateEmailOptions params = CreateEmailOptions.builder()
-                .from(fromEmail)
-                .to(to)
-                .subject("Ваш код подтверждения")
-                .html(html)
-                .build();
-
         try {
-            CreateEmailResponse response = resend.emails().send(params);
-            // response.getId() — можно залогировать id письма для отладки
-        } catch (Exception e) {
-            throw new RuntimeException("Не удалось отправить письмо через Resend", e);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject("Ваш код підтвердження");
+            helper.setText(html, true);
+
+            mailSender.send(message);
+        } catch (MessagingException e) {
+            throw new RuntimeException("Не вдалося надіслати лист через Gmail SMTP", e);
         }
     }
 }
