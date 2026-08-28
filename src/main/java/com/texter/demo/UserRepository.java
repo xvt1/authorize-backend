@@ -12,8 +12,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByUsername(String username);
 
-    Optional<User> findByEmail(String email);
-
     /**
      * Пряме оновлення тільки колонки last_seen_at, без SELECT усього рядка
      * і без перезапису password/email/role. Саме це прибирає зайві

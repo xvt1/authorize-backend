@@ -37,7 +37,6 @@ public class TelegramNotificationService {
         String text = "🆕 Новий підтверджений користувач:\n"
                 + "Нікнейм: " + nick + "\n"
                 + "Username: " + user.getUsername() + "\n"
-                + "Email: " + user.getEmail() + "\n"
                 + "Статус: ⏳ Очікує\n\n"
                 + "Спочатку прийміть або відхиліть заявку:";
 
@@ -70,8 +69,7 @@ public class TelegramNotificationService {
     public void showRoleSelection(Long chatId, Integer messageId, User user) {
         String nick = user.getNickname() != null ? user.getNickname() : user.getUsername();
         String text = "👤 " + nick + "\n"
-                + "Login: " + user.getUsername() + "\n"
-                + "Email: " + user.getEmail() + "\n\n"
+                + "Login: " + user.getUsername() + "\n\n"
                 + "✅ Заявку прийнято. Оберіть роль:";
         editMessage(chatId, messageId, text, buildRoleKeyboard(user.getId(), false));
     }
@@ -110,7 +108,6 @@ public class TelegramNotificationService {
         String nick = user.getNickname() != null ? user.getNickname() : user.getUsername();
         return "👤 " + nick + "\n"
                 + "Login: " + user.getUsername() + "\n"
-                + "Email: " + user.getEmail() + "\n"
                 + "Статус: " + statusEmoji(user) + " " + statusLabel(user) + "\n"
                 + "Роль: " + roleLabel(user.getRole()) + "\n\n"
                 + (user.getRole() == Role.PENDING

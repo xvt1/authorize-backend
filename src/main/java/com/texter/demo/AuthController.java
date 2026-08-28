@@ -4,10 +4,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Random;
 
 @RestController
 @CrossOrigin(origins = "*")
@@ -19,15 +17,12 @@ public class AuthController {
     private static final long LAST_SEEN_UPDATE_THRESHOLD_SECONDS = 20;
 
     private final UserRepository userRepository;
-    private final EmailService emailService;
-    private final Map<String, String> verificationCodes = new HashMap<>();
     private final JwtService jwtService;
     private final TelegramNotificationService telegramNotificationService;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthController(UserRepository userRepository, EmailService emailService, JwtService jwtService, TelegramNotificationService telegramNotificationService, PasswordEncoder passwordEncoder) {
+    public AuthController(UserRepository userRepository, JwtService jwtService, TelegramNotificationService telegramNotificationService, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
-        this.emailService = emailService;
         this.jwtService = jwtService;
         this.telegramNotificationService = telegramNotificationService;
         this.passwordEncoder = passwordEncoder;
@@ -51,9 +46,6 @@ public class AuthController {
         if (req.getUsername() == null || req.getUsername().isBlank()) {
             return ResponseEntity.status(400).body("Логін обов'язковий");
         }
-        if (req.getEmail() == null || req.getEmail().isBlank()) {
-            return ResponseEntity.status(400).body("Email обов'язковий");
-        }
         if (req.getPassword() == null || req.getPassword().isBlank()) {
             return ResponseEntity.status(400).body("Пароль обов'язковий");
         }
@@ -62,68 +54,22 @@ public class AuthController {
             return ResponseEntity.status(400).body("Такий користувач вже існує");
         }
 
-        if (userRepository.findByEmail(req.getEmail()).isPresent()) {
-            return ResponseEntity.status(400).body("Цей email вже використовується");
-        }
-
-        String code = String.valueOf(new Random().nextInt(900000) + 100000);
-        verificationCodes.put(req.getEmail(), code);
-        verificationCodes.put(req.getEmail() + "_username", req.getUsername());
-        verificationCodes.put(req.getEmail() + "_password", passwordEncoder.encode(req.getPassword()));
         String nick = (req.getNickname() != null && !req.getNickname().isBlank())
                 ? req.getNickname().trim()
                 : req.getUsername().trim();
-        verificationCodes.put(req.getEmail() + "_nickname", nick);
-
-        emailService.sendVerificationCode(req.getEmail(), code);
-
-        return ResponseEntity.ok("Код відправлено на email");
-    }
-
-    @PostMapping("/auth/verify")
-    public ResponseEntity<?> verify(@RequestBody VerifyRequest req) {
-
-        String savedCode = verificationCodes.get(req.getEmail());
-
-        if (savedCode == null || !savedCode.equals(req.getCode())) {
-            return ResponseEntity.status(400).body("Невірний код");
-        }
 
         User newUser = new User();
-        newUser.setEmail(req.getEmail());
-        newUser.setUsername(verificationCodes.get(req.getEmail() + "_username"));
-        newUser.setPassword(verificationCodes.get(req.getEmail() + "_password"));
-        newUser.setNickname(verificationCodes.get(req.getEmail() + "_nickname"));
+        newUser.setUsername(req.getUsername());
+        newUser.setPassword(passwordEncoder.encode(req.getPassword()));
+        newUser.setNickname(nick);
         // role = PENDING — користувач НЕ може зайти, поки адмін не прийме
-
-        // Видаємо токен одразу: користувач «увійшов», на сайті побачить
-        // «Очікуйте підтвердження» поки адмін не прийме.
-        // last_seen_at ставимо ДО save, щоб не робити другий UPDATE одразу після першого.
         newUser.setLastSeenAt(Instant.now());
         userRepository.save(newUser);
-
-        verificationCodes.remove(req.getEmail());
-        verificationCodes.remove(req.getEmail() + "_username");
-        verificationCodes.remove(req.getEmail() + "_password");
-        verificationCodes.remove(req.getEmail() + "_nickname");
 
         telegramNotificationService.notifyAdminAboutNewUser(newUser);
 
         String token = jwtService.generateToken(newUser.getUsername());
         return ResponseEntity.ok(token);
-    }
-
-    @PostMapping("/auth/register/resend")
-    public ResponseEntity<?> resend(@RequestBody VerifyRequest req) {
-        if (!verificationCodes.containsKey(req.getEmail())) {
-            return ResponseEntity.status(400).body("Спочатку зареєструйся");
-        }
-
-        String code = String.valueOf(new Random().nextInt(900000) + 100000);
-        verificationCodes.put(req.getEmail(), code);
-        emailService.sendVerificationCode(req.getEmail(), code);
-
-        return ResponseEntity.ok("Код відправлено знову");
     }
 
     @PostMapping("/auth/login")
