@@ -6,8 +6,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "users")
-@DynamicUpdate // Hibernate буде включати в UPDATE тільки реально змінені колонки,
-// а не всі (password/email/role тощо) при кожному save()
+@DynamicUpdate
 public class User {
 
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
@@ -22,9 +21,11 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    /** Відображуване ім'я (нікнейм) */
     @Column(name = "nickname")
     private String nickname;
+
+    @Column(name = "email")
+    private String email;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -34,13 +35,18 @@ public class User {
     private Instant lastSeenAt;
 
     public Long getId() { return id; }
+
     public String getUsername() { return username; }
-    public String getPassword() { return password; }
     public void setUsername(String username) { this.username = username; }
+
+    public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
 
     public String getNickname() { return nickname; }
     public void setNickname(String nickname) { this.nickname = nickname; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 
     public Role getRole() { return role; }
     public void setRole(Role role) { this.role = role; }
@@ -53,7 +59,6 @@ public class User {
         return lastSeenAt.isAfter(Instant.now().minusSeconds(ONLINE_THRESHOLD_MINUTES * 60));
     }
 
-    /** Для відображення: нікнейм, якщо є, інакше username */
     public String getDisplayName() {
         if (nickname != null && !nickname.isBlank()) {
             return nickname;

@@ -3,6 +3,7 @@ package com.texter.demo;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -11,9 +12,6 @@ import java.util.Optional;
 @CrossOrigin(origins = "*")
 public class AuthController {
 
-    // Не пишемо last_seen_at в базу частіше, ніж раз на цей інтервал —
-    // саме це прибирає "select...update...select...update" шторм
-    // при частих запитах /auth/me та /auth/heartbeat.
     private static final long LAST_SEEN_UPDATE_THRESHOLD_SECONDS = 20;
 
     private final UserRepository userRepository;
@@ -21,17 +19,16 @@ public class AuthController {
     private final TelegramNotificationService telegramNotificationService;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthController(UserRepository userRepository, JwtService jwtService, TelegramNotificationService telegramNotificationService, PasswordEncoder passwordEncoder) {
+    public AuthController(UserRepository userRepository,
+                          JwtService jwtService,
+                          TelegramNotificationService telegramNotificationService,
+                          PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.telegramNotificationService = telegramNotificationService;
         this.passwordEncoder = passwordEncoder;
     }
 
-    /**
-     * Оновлює last_seen_at прямим UPDATE-ом (без перезапису всього рядка)
-     * і тільки якщо минуло достатньо часу з попереднього оновлення.
-     */
     private void touchLastSeenIfNeeded(User user) {
         Instant now = Instant.now();
         Instant last = user.getLastSeenAt();
@@ -58,11 +55,17 @@ public class AuthController {
                 ? req.getNickname().trim()
                 : req.getUsername().trim();
 
+        // email: якщо фронт не передає — ставимо placeholder, щоб NOT NULL не падав
+        String email = (req.getEmail() != null && !req.getEmail().isBlank())
+                ? req.getEmail().trim()
+                : req.getUsername().trim() + "@local";
+
         User newUser = new User();
-        newUser.setUsername(req.getUsername());
+        newUser.setUsername(req.getUsername().trim());
         newUser.setPassword(passwordEncoder.encode(req.getPassword()));
         newUser.setNickname(nick);
-        // role = PENDING — користувач НЕ може зайти, поки адмін не прийме
+        newUser.setEmail(email);
+        // role за замовчуванням PENDING
         newUser.setLastSeenAt(Instant.now());
         userRepository.save(newUser);
 
@@ -85,13 +88,11 @@ public class AuthController {
             return ResponseEntity.status(401).body("Невірний пароль");
         }
 
-        // заблокованим — не даємо увійти
         if (user.getRole() == Role.BLOCKED) {
             return ResponseEntity.status(403).body("blocked");
         }
 
-        // PENDING теж отримує токен: на сайті покажеться «очікуйте»,
-        // поки адмін не прийме (перевірка через /auth/me)
+        // PENDING теж отримує токен — на сайті /auth/me покаже «очікуйте»
         touchLastSeenIfNeeded(user);
 
         String token = jwtService.generateToken(user.getUsername());
@@ -102,7 +103,7 @@ public class AuthController {
     public ResponseEntity<?> heartbeat(@RequestBody Map<String, String> body) {
         String username = body.get("username");
         if (username == null || username.isBlank()) {
-            return ResponseEntity.badRequest().body("username обов'язковий");
+            return ResponseEntity.status(400).body(Map.of("status", "error", "message", "username required"));
         }
 
         return userRepository.findByUsername(username)
